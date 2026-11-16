@@ -1,0 +1,46 @@
+# ============================================================
+# NIBE GM-Blueprint – Hilfs-Entitäten als YAML-Paket
+# Datei ablegen als:  /config/packages/nibe_gm.yaml
+# Voraussetzung in configuration.yaml:
+#   homeassistant:
+#     packages: !include_dir_named packages
+# Danach: Konfiguration prüfen, dann Home Assistant neu starten.
+# ============================================================
+
+# Zeitstempel des letzten Schreibversuchs (Sperrzeit)
+input_datetime:
+  nibe_gm_sperrzeit_start:
+    name: Nibe GM Sperrzeit Start
+    has_date: true
+    has_time: true
+
+counter:
+  # Fehler in Folge (nach der eingestellten Anzahl schaltet sich die Automation ab)
+  nibe_gm_schreibfehler:
+    name: Nibe GM Schreibfehler
+    initial: 0
+    restore: true
+    step: 1
+    minimum: 0
+    icon: mdi:alert-circle-outline
+  # Zählt jeden Schreibbefehl an die Wärmepumpe
+  nibe_gm_schreibzugriffe:
+    name: Nibe GM Schreibzugriffe
+    initial: 0
+    restore: true
+    step: 1
+    minimum: 0
+    icon: mdi:memory
+
+sensor:
+  # Zeitgewichteter 6-h-Mittelwert der Außentemperatur
+  - platform: statistics
+    name: Nibe Aussentemperatur 6h Mittel
+    unique_id: nibe_gm_aussentemperatur_6h_mittel
+    # >>> HIER DEINEN AUSSENTEMPERATUR-SENSOR EINTRAGEN <<<
+    entity_id: sensor.DEIN_NIBE_AUSSENTEMPERATUR_SENSOR
+    state_characteristic: average_step
+    max_age:
+      hours: 6
+    keep_last_sample: true
+    precision: 2

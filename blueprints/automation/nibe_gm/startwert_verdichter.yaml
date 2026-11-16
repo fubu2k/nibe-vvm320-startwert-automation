@@ -1,0 +1,469 @@
+blueprint:
+  name: NIBE – Verdichter-Startwert (Gradminuten) nach Außentemperatur
+  description: |
+    Stellt bei einer NIBE-Wärmepumpe (myUplink-Integration, **myUplink Premium nötig**) den
+    Parameter **"Start Verdichter"** (Gradminuten, Menü 4.9.3) in **3 Stufen** nach einem
+    gemittelten Außentemperaturwert ein. Ziel: weniger Verdichter-Takten bei milden Temperaturen.
+
+    **Eigenschaften**
+    - Läuft nur in der Heizperiode (Mittelwert **unter dem Heizungsstopp** der Wärmepumpe).
+    - Prüfung zweimal täglich, je mit einem Wiederholungsversuch 1 h später.
+    - Hysterese gegen Hin-und-her-Springen, höchstens **eine Stufe** pro Änderung.
+    - **Schreibt nur bei einer Änderung** und höchstens alle `Sperrzeit` Stunden (Schonung des
+      Parameterspeichers). Jeder Schreibversuch wird gezählt.
+    - Nie bei Warmwasser, Abtauung oder Verdichterstart; bei nicht erreichbarer Wärmepumpe
+      oder unplausiblen Messwerten wird nichts geschrieben.
+    - Nach dem Schreiben wird die Rückmeldung der Wärmepumpe abgewartet. Nach
+      **zwei Fehlern in Folge schaltet sich die Automation selbst ab** und meldet das.
+    - Der laufende Gradminuten-Zähler (4.9.3 "aktuell") wird nie verändert.
+
+    **Wichtig – Nutzung auf eigene Verantwortung**
+    Die Automation schreibt Werte in deine Wärmepumpe. Prüfe vorher, ob die Stufen zu deiner
+    Anlage und deinem Haus passen (Herstellerangaben, Installateur). Beobachte die ersten Tage
+    genau. Für Schäden, Garantiefolgen oder Mehrverbrauch übernimmt der Autor keine Haftung.
+    Die Standardwerte stammen von einer NIBE VVM 320 E mit Außeneinheit F2040 und sind **kein**
+    allgemeiner Richtwert. Die Statuscodes (Priorität 10/20/30, Verdichter 20/40/60) gelten für
+    die myUplink-Werte dieser Geräteserie.
+
+    **Voraussetzungen** – siehe Anleitung: Hilfs-Entitäten (6-h-Mittel, Zeitstempel, 2 Zähler)
+    müssen vorher angelegt und in myUplink deaktivierte Entitäten aktiviert werden.
+  domain: automation
+  homeassistant:
+    min_version: 2024.10.0
+  input:
+    wp:
+      name: 1. Entitäten der Wärmepumpe (myUplink)
+      icon: mdi:heat-pump
+      collapsed: false
+      input:
+        start_value:
+          name: Start Verdichter (Gradminuten-Startwert)
+          description: >-
+            Zahl-Entität für Menü 4.9.3 "Start Verdichter". In myUplink standardmäßig
+            deaktiviert, z. B. number.xxx_start_compressor.
+          selector:
+            entity:
+              domain: number
+        heating_stop:
+          name: Heizungsstopp (Außentemperatur)
+          description: >-
+            Zahl-Entität "stop heating" (Außentemperatur, ab der die Heizung stoppt).
+            Oberhalb davon läuft die Automation nicht.
+          selector:
+            entity:
+              domain: number
+        outdoor_raw:
+          name: Außentemperatur (aktuell)
+          description: Rohwert des Außenfühlers, nur für die Plausibilitätsprüfung.
+          selector:
+            entity:
+              domain: sensor
+        nibe_avg:
+          name: Außentemperatur Mittel (BT1, NIBE-intern)
+          description: Mittelwert der Wärmepumpe, dient als Gegenprobe zum eigenen Mittelwert.
+          selector:
+            entity:
+              domain: sensor
+        connectivity:
+          name: Verbindung der Wärmepumpe
+          selector:
+            entity:
+              domain: binary_sensor
+        priority:
+          name: Priorität (Betriebsart)
+          description: 10 = Bereitschaft, 20 = Warmwasser, 30 = Heizen.
+          selector:
+            entity:
+              domain: sensor
+        compressor_status:
+          name: Status Verdichter
+          description: 20 = aus, 40 = startet, 60 = läuft.
+          selector:
+            entity:
+              domain: sensor
+        defrost:
+          name: Abtauung (0/1)
+          selector:
+            entity:
+              domain: sensor
+        supply_actual:
+          name: Vorlauftemperatur (BT2)
+          selector:
+            entity:
+              domain: sensor
+        supply_calc:
+          name: Berechnete Vorlauftemperatur (Heizkreis 1)
+          selector:
+            entity:
+              domain: sensor
+    helpers:
+      name: 2. Hilfs-Entitäten (vorher anlegen)
+      icon: mdi:toolbox
+      collapsed: false
+      input:
+        outdoor_mean:
+          name: Außentemperatur 6-h-Mittel
+          description: >-
+            Sensor vom Typ "Statistik" (Quelle: Außentemperatur, Merkmal
+            "Durchschnitt (zeitgewichtet)", Höchstalter 6 Stunden, letzten Wert behalten).
+          selector:
+            entity:
+              domain: sensor
+        lock_helper:
+          name: Zeitstempel letzte Änderung
+          description: Hilfsentität "Datum und/oder Uhrzeit" mit Datum **und** Uhrzeit.
+          selector:
+            entity:
+              domain: input_datetime
+        error_counter:
+          name: Zähler Schreibfehler
+          description: Zähler-Hilfsentität (Startwert 0).
+          selector:
+            entity:
+              domain: counter
+        write_counter:
+          name: Zähler Schreibzugriffe
+          description: Zähler-Hilfsentität (Startwert 0), zählt jeden Schreibbefehl.
+          selector:
+            entity:
+              domain: counter
+    stages:
+      name: 3. Stufen und Schwellen
+      icon: mdi:stairs
+      collapsed: true
+      input:
+        stage_warm:
+          name: Startwert über der oberen Schwelle (mild)
+          default: -300
+          selector:
+            number:
+              min: -600
+              max: -30
+              step: 10
+              mode: box
+        stage_mild:
+          name: Startwert zwischen den Schwellen
+          default: -200
+          selector:
+            number:
+              min: -600
+              max: -30
+              step: 10
+              mode: box
+        stage_cold:
+          name: Startwert unter der unteren Schwelle (kalt)
+          default: -130
+          selector:
+            number:
+              min: -600
+              max: -30
+              step: 10
+              mode: box
+        t_high:
+          name: Obere Schwelle
+          default: 5
+          selector:
+            number:
+              min: -10
+              max: 20
+              step: 0.5
+              unit_of_measurement: °C
+              mode: box
+        t_low:
+          name: Untere Schwelle
+          default: 0
+          selector:
+            number:
+              min: -15
+              max: 15
+              step: 0.5
+              unit_of_measurement: °C
+              mode: box
+        hysteresis:
+          name: Hysterese (± an jeder Schwelle)
+          default: 0.75
+          selector:
+            number:
+              min: 0.25
+              max: 3
+              step: 0.25
+              unit_of_measurement: K
+              mode: box
+    timing:
+      name: 4. Zeiten und Sicherheit
+      icon: mdi:shield-check
+      collapsed: true
+      input:
+        time_1:
+          name: Prüfung 1
+          default: "00:00:00"
+          selector:
+            time:
+        time_1_retry:
+          name: Wiederholung zu Prüfung 1
+          default: "01:00:00"
+          selector:
+            time:
+        time_2:
+          name: Prüfung 2
+          default: "12:00:00"
+          selector:
+            time:
+        time_2_retry:
+          name: Wiederholung zu Prüfung 2
+          default: "13:00:00"
+          selector:
+            time:
+        lock_hours:
+          name: Sperrzeit nach einem Schreibversuch
+          description: >-
+            Mindestabstand zwischen zwei Schreibversuchen. Bei zwei Prüfungen pro Tag
+            11 Stunden lassen, damit die zweite Prüfung nicht um Sekunden blockiert wird.
+          default: 11
+          selector:
+            number:
+              min: 1
+              max: 24
+              step: 1
+              unit_of_measurement: h
+              mode: box
+        max_errors:
+          name: Fehler in Folge bis zur Selbstabschaltung
+          default: 2
+          selector:
+            number:
+              min: 1
+              max: 5
+              step: 1
+              mode: box
+        confirm_minutes:
+          name: Wartezeit auf Rückmeldung der Wärmepumpe
+          description: Die myUplink-Cloud braucht oft 10–60 Sekunden.
+          default: 5
+          selector:
+            number:
+              min: 1
+              max: 30
+              step: 1
+              unit_of_measurement: min
+              mode: box
+        max_deviation:
+          name: Max. Abweichung eigenes Mittel zu BT1-Mittel
+          default: 6
+          selector:
+            number:
+              min: 2
+              max: 15
+              step: 1
+              unit_of_measurement: K
+              mode: box
+        supply_tolerance:
+          name: Max. Abweichung Vorlauf Ist zu Soll (nur bei laufendem Verdichter)
+          default: 5
+          selector:
+            number:
+              min: 2
+              max: 15
+              step: 1
+              unit_of_measurement: K
+              mode: box
+    notify:
+      name: 5. Benachrichtigung
+      icon: mdi:bell
+      collapsed: true
+      input:
+        notify_actions:
+          name: Aktion(en) für Meldungen
+          description: >-
+            Optional. Füge hier deine Benachrichtigung hinzu, z. B. "Benachrichtigung senden"
+            an dein Handy. Verfügbar sind die Variablen `nachricht_titel` und `nachricht_text`.
+            Im YAML-Modus z. B.:
+            `- action: notify.mobile_app_MEIN_HANDY` mit
+            `data: {title: "{{ nachricht_titel }}", message: "{{ nachricht_text }}"}`.
+            Leer lassen = keine Meldungen (nicht empfohlen).
+          default: []
+          selector:
+            action:
+
+mode: single
+max_exceeded: silent
+
+variables:
+  e_start: !input start_value
+  e_mean: !input outdoor_mean
+  e_nibe_avg: !input nibe_avg
+  e_comp: !input compressor_status
+  e_supply: !input supply_actual
+  e_supply_calc: !input supply_calc
+  e_lock: !input lock_helper
+  e_err: !input error_counter
+  s_warm: !input stage_warm
+  s_mild: !input stage_mild
+  s_cold: !input stage_cold
+  t_high: !input t_high
+  t_low: !input t_low
+  hyst: !input hysteresis
+  lock_h: !input lock_hours
+  max_err: !input max_errors
+  wait_min: !input confirm_minutes
+  max_dev: !input max_deviation
+  supply_tol: !input supply_tolerance
+  stufen: "{{ [s_warm | int, s_mild | int, s_cold | int] }}"
+  schwellen: "{{ [t_high | float, t_low | float] }}"
+  temp: "{{ states(e_mean) | float(none) }}"
+  aktuell: "{{ states(e_start) | float(none) | int(none) }}"
+  ziel: >-
+    {%- if temp is none or aktuell is none -%}
+      {{ none }}
+    {%- else -%}
+      {%- set kalt_min = schwellen | select('ge', temp + hyst | float) | list | count -%}
+      {%- set kalt_max = schwellen | select('gt', temp - hyst | float) | list | count -%}
+      {%- if aktuell in stufen -%}
+        {%- set s = stufen.index(aktuell) -%}
+        {%- set neu = [[s, kalt_min] | max, kalt_max] | min -%}
+        {%- set neu = [[neu, s - 1] | max, s + 1] | min -%}
+      {%- else -%}
+        {%- set neu = schwellen | select('gt', temp) | list | count -%}
+      {%- endif -%}
+      {{ stufen[neu] }}
+    {%- endif -%}
+
+triggers:
+  - trigger: time
+    at: !input time_1
+  - trigger: time
+    at: !input time_1_retry
+  - trigger: time
+    at: !input time_2
+  - trigger: time
+    at: !input time_2_retry
+
+conditions:
+  - alias: "0) Nur in der Heizperiode: 6-h-Mittel unter dem Heizungsstopp"
+    condition: numeric_state
+    entity_id: !input outdoor_mean
+    below: !input heating_stop
+  - alias: "1) Gültiger Zielwert, der vom aktuellen abweicht; Stufen aufsteigend"
+    condition: template
+    value_template: "{{ ziel is not none and ziel != aktuell and stufen == (stufen | sort) }}"
+  - alias: "2a) Wärmepumpe erreichbar"
+    condition: state
+    entity_id: !input connectivity
+    state: "on"
+  - alias: "2b) Außentemperatur-Rohsensor liefert plausiblen Wert"
+    condition: numeric_state
+    entity_id: !input outdoor_raw
+    above: -40
+    below: 50
+  - alias: "3) Plausibilität: eigenes Mittel nahe am NIBE-Mittel (BT1)"
+    condition: template
+    value_template: >-
+      {% set avg = states(e_nibe_avg) | float(none) %}
+      {{ avg is not none and (temp - avg) | abs < max_dev | float(6) }}
+  - alias: "4) Nur Bereitschaft (10) oder Heizen (30), nie Warmwasser (20)"
+    condition: or
+    conditions:
+      - condition: numeric_state
+        entity_id: !input priority
+        above: 5
+        below: 15
+      - condition: numeric_state
+        entity_id: !input priority
+        above: 25
+        below: 35
+  - alias: "5a) Keine Abtauung"
+    condition: numeric_state
+    entity_id: !input defrost
+    below: 0.5
+  - alias: "5b) Verdichter steht (20) oder läuft (60), nicht im Start (40)"
+    condition: or
+    conditions:
+      - condition: numeric_state
+        entity_id: !input compressor_status
+        above: 15
+        below: 25
+      - condition: numeric_state
+        entity_id: !input compressor_status
+        above: 55
+        below: 65
+  - alias: "6) Vorlauf-Prüfung nur bei laufendem Verdichter (60)"
+    condition: template
+    value_template: >-
+      {% set laeuft = states(e_comp) | float(0) | int == 60 %}
+      {% set ist = states(e_supply) | float(none) %}
+      {% set soll = states(e_supply_calc) | float(none) %}
+      {{ not laeuft or (ist is not none and soll is not none and (ist - soll) | abs <= supply_tol | float(5)) }}
+  - alias: "7) Sperrzeit seit dem letzten Schreibversuch"
+    condition: template
+    value_template: >-
+      {% set letzte = as_datetime(states(e_lock), none) %}
+      {{ letzte is none or now() - (letzte | as_local) > timedelta(hours=lock_h | float(11)) }}
+
+actions:
+  - alias: "Sperrzeit zuerst starten – auch nach Fehler kein erneutes Schreiben"
+    action: input_datetime.set_datetime
+    target:
+      entity_id: !input lock_helper
+    data:
+      datetime: "{{ now().strftime('%Y-%m-%d %H:%M:%S') }}"
+  - alias: "Genau ein Schreibbefehl an myUplink"
+    action: number.set_value
+    continue_on_error: true
+    target:
+      entity_id: !input start_value
+    data:
+      value: "{{ ziel }}"
+  - alias: "Schreibzugriff zählen"
+    action: counter.increment
+    target:
+      entity_id: !input write_counter
+  - alias: "Auf Rückmeldung der Wärmepumpe warten (Cloud-Latenz)"
+    wait_template: "{{ states(e_start) | float(none) | int(none) == ziel }}"
+    timeout: "{{ '00:%02d:00' % (wait_min | int(5)) }}"
+    continue_on_timeout: true
+  - alias: "Erfolg oder Fehler melden"
+    choose:
+      - conditions:
+          - condition: template
+            value_template: "{{ wait.completed }}"
+        sequence:
+          - action: counter.reset
+            target:
+              entity_id: !input error_counter
+          - variables:
+              nachricht_titel: "Nibe: Start Verdichter geändert"
+              nachricht_text: "{{ aktuell }} → {{ ziel }} GM (Außentemperatur 6-h-Mittel {{ temp | round(1) }} °C)"
+          - sequence: !input notify_actions
+    default:
+      - action: counter.increment
+        target:
+          entity_id: !input error_counter
+      - choose:
+          - conditions:
+              - condition: template
+                value_template: "{{ states(e_err) | int(0) >= max_err | int(2) }}"
+            sequence:
+              - variables:
+                  nachricht_titel: "⛔ Nibe: GM-Automation deaktiviert"
+                  nachricht_text: >-
+                    {{ max_err | int(2) }} Schreibfehler in Folge (Soll {{ ziel }} GM,
+                    Wärmepumpe meldet {{ states(e_start) }}). Die Automation hat sich selbst
+                    deaktiviert. Bitte myUplink/Display prüfen und die Automation danach von
+                    Hand wieder einschalten.
+              - sequence: !input notify_actions
+              - action: counter.reset
+                target:
+                  entity_id: !input error_counter
+              - action: automation.turn_off
+                data:
+                  stop_actions: false
+                target:
+                  entity_id: "{{ this.entity_id }}"
+        default:
+          - variables:
+              nachricht_titel: "⚠️ Nibe: GM-Startwert NICHT bestätigt"
+              nachricht_text: >-
+                Soll {{ ziel }} GM, Wärmepumpe meldet weiter {{ states(e_start) }}.
+                Fehler {{ states(e_err) }} von {{ max_err | int(2) }}. Kein erneuter Versuch
+                vor Ablauf der Sperrzeit – bitte in myUplink oder am Display prüfen.
+          - sequence: !input notify_actions
