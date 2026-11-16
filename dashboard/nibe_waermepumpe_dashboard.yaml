@@ -1,0 +1,192 @@
+# ============================================================
+# NIBE Wärmepumpe – Dashboard (zum Einfügen)
+#
+# So geht es (ausführlich in der README, Abschnitt 10):
+#  1. Einstellungen -> Dashboards -> Dashboard hinzufügen -> "Neues Dashboard von Grund auf"
+#  2. Dashboard öffnen -> Stift (oben rechts) -> drei Punkte -> "Rohkonfigurations-Editor"
+#  3. Alles löschen und diesen Text einfügen
+#  4. Die Wörter mit DEIN_ ersetzen (Liste unten)
+#  5. Speichern
+#
+# Diese Wörter musst du ersetzen (nimm die Namen aus dem Entitäten-Finder der README):
+#   number.DEIN_start_compressor
+#   sensor.DEIN_degree_minutes
+#   sensor.DEIN_outdoor_temperature
+#   sensor.DEIN_average_outdoor_temp_bt1
+#   sensor.DEIN_current_compressor_frequency_eb101
+#   sensor.DEIN_requested_compressor_freq_eb101
+#   sensor.DEIN_number_of_starts
+#   sensor.DEIN_defrosting_eb101_ep14
+#   automation.DEINE_AUTOMATION   (die Automation, die du aus dem Blueprint gemacht hast)
+#
+# Diese Namen stimmen, wenn du das Hilfs-Paket (packages/nibe_gm.yaml) benutzt:
+#   sensor.nibe_aussentemperatur_6h_mittel, input_datetime.nibe_gm_sperrzeit_start,
+#   counter.nibe_gm_schreibfehler, counter.nibe_gm_schreibzugriffe,
+#   sensor.nibe_verdichterstarts_heute, sensor.nibe_verdichterstarts_woche
+# ============================================================
+views:
+  - title: Wärmepumpe
+    path: waermepumpe
+    icon: mdi:heat-pump
+    type: sections
+    max_columns: 3
+    sections:
+      # ---------- Spalte 1: Startwert, Temperatur, Automatik ----------
+      - type: grid
+        cards:
+          - type: heading
+            heading: Startwert und Gradminuten
+            heading_style: title
+            icon: mdi:sigma
+          - type: tile
+            entity: number.DEIN_start_compressor
+            name: Start Verdichter (eingestellt)
+            icon: mdi:target
+            color: red
+            grid_options:
+              columns: 6
+          - type: tile
+            entity: sensor.DEIN_degree_minutes
+            name: Gradminuten aktuell
+            icon: mdi:timer-sand
+            color: blue
+            grid_options:
+              columns: 6
+          - type: history-graph
+            title: Gradminuten und Startwert (12 Stunden)
+            hours_to_show: 12
+            entities:
+              - entity: sensor.DEIN_degree_minutes
+                name: Gradminuten aktuell
+              - entity: number.DEIN_start_compressor
+                name: Start Verdichter
+            grid_options:
+              columns: full
+          - type: heading
+            heading: Außentemperatur
+            heading_style: subtitle
+            icon: mdi:thermometer
+          - type: tile
+            entity: sensor.DEIN_outdoor_temperature
+            name: Außen jetzt
+            color: teal
+            grid_options:
+              columns: 4
+          - type: tile
+            entity: sensor.nibe_aussentemperatur_6h_mittel
+            name: 6-Stunden-Mittel
+            color: teal
+            grid_options:
+              columns: 4
+          - type: tile
+            entity: sensor.DEIN_average_outdoor_temp_bt1
+            name: NIBE-Mittel
+            color: teal
+            grid_options:
+              columns: 4
+          - type: heading
+            heading: GM-Automatik
+            heading_style: subtitle
+            icon: mdi:robot
+          # Schalter: GM-Automatik an und aus
+          - type: tile
+            entity: automation.DEINE_AUTOMATION
+            name: GM-Automatik (an / aus)
+            icon: mdi:robot
+            color: green
+            features:
+              - type: toggle
+            grid_options:
+              columns: 12
+          - type: tile
+            entity: input_datetime.nibe_gm_sperrzeit_start
+            name: Letzte Änderung
+            grid_options:
+              columns: 4
+          - type: tile
+            entity: counter.nibe_gm_schreibfehler
+            name: Fehler in Folge
+            grid_options:
+              columns: 4
+          - type: tile
+            entity: counter.nibe_gm_schreibzugriffe
+            name: Schreibzugriffe
+            icon: mdi:memory
+            color: deep-purple
+            grid_options:
+              columns: 4
+      # ---------- Spalte 2: Verdichter ----------
+      - type: grid
+        cards:
+          - type: heading
+            heading: Verdichter
+            heading_style: title
+            icon: mdi:sine-wave
+          - type: tile
+            entity: sensor.DEIN_current_compressor_frequency_eb101
+            name: Frequenz jetzt
+            color: green
+            grid_options:
+              columns: 6
+          - type: tile
+            entity: sensor.DEIN_requested_compressor_freq_eb101
+            name: Frequenz gewünscht
+            color: green
+            grid_options:
+              columns: 6
+          - type: history-graph
+            title: Verdichterfrequenz (24 Stunden)
+            hours_to_show: 24
+            entities:
+              - entity: sensor.DEIN_current_compressor_frequency_eb101
+                name: Ist
+              - entity: sensor.DEIN_requested_compressor_freq_eb101
+                name: Soll
+            grid_options:
+              columns: full
+      # ---------- Spalte 3: Starts und Abtauung ----------
+      - type: grid
+        cards:
+          - type: heading
+            heading: Verdichterstarts
+            heading_style: title
+            icon: mdi:counter
+          - type: tile
+            entity: sensor.nibe_verdichterstarts_heute
+            name: Heute
+            color: orange
+            grid_options:
+              columns: 4
+          - type: tile
+            entity: sensor.nibe_verdichterstarts_woche
+            name: Diese Woche
+            color: orange
+            grid_options:
+              columns: 4
+          - type: tile
+            entity: sensor.DEIN_number_of_starts
+            name: Gesamt
+            grid_options:
+              columns: 4
+          - type: statistics-graph
+            title: Starts pro Tag (14 Tage)
+            entities:
+              - sensor.nibe_verdichterstarts_heute
+            stat_types:
+              - change
+            period: day
+            chart_type: bar
+            days_to_show: 14
+            hide_legend: true
+            grid_options:
+              columns: full
+          - type: heading
+            heading: Abtauung
+            heading_style: subtitle
+            icon: mdi:snowflake-melt
+          - type: tile
+            entity: sensor.DEIN_defrosting_eb101_ep14
+            name: Abtauung (1 = läuft gerade)
+            icon: mdi:snowflake-melt
+            grid_options:
+              columns: 12

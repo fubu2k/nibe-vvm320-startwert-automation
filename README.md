@@ -4,7 +4,7 @@
 
 > ⚠️ **Nutzung auf eigene Verantwortung.** Diese Automation schreibt einen Parameter in deine Wärmepumpe. Die Standardwerte stammen von **einer** Anlage (VVM 320 E + F2040) und sind kein allgemeiner Richtwert. Es gibt **keine Gewährleistung und keine Haftung**, siehe Abschnitt 0 und die Datei [LICENSE](LICENSE). Das Projekt steht in keiner Verbindung zu NIBE.
 
-Blueprint: `blueprints/automation/nibe_gm/startwert_verdichter.yaml` · Hilfs-Entitäten als Paket: `packages/nibe_gm.yaml`
+Blueprint: `blueprints/automation/nibe_gm/startwert_verdichter.yaml` · Hilfs-Entitäten als Paket: `packages/nibe_gm.yaml` · Dashboard: `dashboard/nibe_waermepumpe_dashboard.yaml`
 
 ## 0. Bitte zuerst lesen – Nutzung auf eigene Verantwortung
 
@@ -64,6 +64,10 @@ Die myUplink-Integration legt sehr viele Entitäten an, die meisten sind **stand
 | Abtauung | `…defrosting_eb101_ep14` |
 | Vorlauf BT2 | `…supply_line_bt2` |
 | Berechneter Vorlauf Heizkreis 1 | `…calculated_supply_climate_system_1` |
+| *Nur fürs Dashboard:* Gradminuten | `…degree_minutes` |
+| *Nur fürs Dashboard:* Verdichterfrequenz jetzt | `…current_compressor_frequency_eb101` |
+| *Nur fürs Dashboard:* Verdichterfrequenz gewünscht | `…requested_compressor_freq_eb101` |
+| *Nur fürs Dashboard:* Anzahl Starts | `…number_of_starts` |
 
 So geht es: *Einstellungen → Geräte & Dienste → myUplink → Entitäten*. Filter „deaktivierte Entitäten anzeigen“ einschalten, Entität öffnen, Zahnrad → **Aktiviert** einschalten. Nach dem Aktivieren lädt die Integration neu, das dauert eine Minute. Die genauen Namen unterscheiden sich je nach Gerät und Sprache.
 
@@ -72,13 +76,13 @@ So geht es: *Einstellungen → Geräte & Dienste → myUplink → Entitäten*. F
 Öffne *Entwicklerwerkzeuge → Template* und füge diesen Code ein. Er listet alle benötigten Entitäten auf, die in deiner Installation **aktiv** sind:
 
 ```jinja
-{% set suche = 'start_compressor|stop_heating|outdoor_temperature|average_outdoor_temp_bt1|konnektivitat|connectivity|_priority|status_compressor|defrosting_eb101_ep14|supply_line_bt2|calculated_supply_climate_system_1' %}
+{% set suche = 'start_compressor|stop_heating|outdoor_temperature|average_outdoor_temp_bt1|konnektivitat|connectivity|_priority|status_compressor|defrosting_eb101_ep14|supply_line_bt2|calculated_supply_climate_system_1|degree_minutes|current_compressor_frequency_eb101|requested_compressor_freq_eb101|number_of_starts' %}
 {% for e in states | map(attribute='entity_id') | select('search', suche) | sort %}
 {{ e }}
 {% endfor %}
 ```
 
-Es sollten etwa **10 Zeilen** erscheinen (je eine pro Zeile der Tabelle oben). Fehlt eine, ist die Entität noch **deaktiviert** und muss wie beschrieben aktiviert werden. Diese Namen trägst du später im Blueprint ein. Erscheinen mehrere ähnliche Namen (z. B. mit und ohne Raumnamen), nimm den, dessen Wert zum Display deiner Wärmepumpe passt.
+Es sollten etwa **14 Zeilen** erscheinen (je eine pro Zeile der Tabelle oben; die vier „nur fürs Dashboard“ brauchst du nur, wenn du das Dashboard willst). Fehlt eine, ist die Entität noch **deaktiviert** und muss wie beschrieben aktiviert werden. Diese Namen trägst du später im Blueprint ein. Erscheinen mehrere ähnliche Namen (z. B. mit und ohne Raumnamen), nimm den, dessen Wert zum Display deiner Wärmepumpe passt.
 
 ## 4. Schritt 2: Hilfs-Entitäten anlegen
 
@@ -92,10 +96,10 @@ Es werden vier Hilfs-Entitäten gebraucht. Ein Blueprint kann sie nicht selbst a
      packages: !include_dir_named packages
    ```
 2. Datei `packages/nibe_gm.yaml` aus diesem Repository nach `/config/packages/nibe_gm.yaml` kopieren.
-3. In der Datei bei `entity_id:` den **eigenen Außentemperatur-Sensor** eintragen.
+3. In der Datei den **eigenen Außentemperatur-Sensor** bei `entity_id:` eintragen. Willst du später das Dashboard (Abschnitt 10) benutzen, trage auch den Sensor „Anzahl Starts“ bei `source:` ein (zweimal, steht im Text). Ohne Dashboard kannst du den Block `utility_meter` löschen.
 4. *Entwicklerwerkzeuge → YAML → Konfiguration prüfen*, dann Home Assistant neu starten.
 
-Es entstehen: `input_datetime.nibe_gm_sperrzeit_start`, `counter.nibe_gm_schreibfehler`, `counter.nibe_gm_schreibzugriffe`, `sensor.nibe_aussentemperatur_6h_mittel`.
+Es entstehen: `input_datetime.nibe_gm_sperrzeit_start`, `counter.nibe_gm_schreibfehler`, `counter.nibe_gm_schreibzugriffe`, `sensor.nibe_aussentemperatur_6h_mittel`, `sensor.nibe_verdichterstarts_heute` und `sensor.nibe_verdichterstarts_woche`.
 
 ### Variante B: Per Oberfläche (*Einstellungen → Geräte & Dienste → Helfer → Helfer erstellen*)
 
@@ -216,24 +220,74 @@ use_blueprint:
 1. Automation ausschalten.
 2. Startwert (Menü 4.9.3) auf deinen vorher notierten Wert stellen, entweder am Display oder in der Zahl-Entität.
 
-## 10. Dashboard (optional)
+## 10. Dashboard (optional, einfach)
 
-Kachel für Startwert, Gradminuten und Zähler:
+Mit dem Dashboard siehst du auf einen Blick, was die Wärmepumpe und die Automation machen. Es hat einen **Schalter, mit dem du die GM-Automatik an und aus machst**.
+
+**Was du siehst**
+
+- **Startwert und Gradminuten:** Der eingestellte Startwert (rot) und die Gradminuten jetzt. Dazu eine Linie der letzten 12 Stunden.
+- **Außentemperatur:** Wert jetzt, 6-Stunden-Mittel und das Mittel von NIBE.
+- **GM-Automatik:** Der Schalter an/aus, wann zuletzt etwas geändert wurde, wie viele Fehler in Folge es gab und wie oft die Automation geschrieben hat.
+- **Verdichter:** Frequenz jetzt und gewünscht, dazu der Verlauf der letzten 24 Stunden.
+- **Verdichterstarts:** Starts heute, diese Woche und gesamt. Dazu ein Balkenbild mit den Starts pro Tag.
+- **Abtauung:** Ob die Wärmepumpe gerade abtaut.
+
+**So baust du es auf**
+
+1. Gehe zu *Einstellungen → Dashboards → Dashboard hinzufügen* und wähle „Neues Dashboard von Grund auf“. Gib einen Namen ein, zum Beispiel „Wärmepumpe“.
+2. Öffne das neue Dashboard. Tippe oben rechts auf den **Stift**, dann auf die **drei Punkte** und auf **Rohkonfigurations-Editor**.
+3. Lösche den ganzen Text dort.
+4. Öffne die Datei `dashboard/nibe_waermepumpe_dashboard.yaml` aus diesem Repository, kopiere **alles** und füge es im Editor ein.
+5. Ersetze jetzt jedes Wort mit `DEIN_` durch den echten Namen aus deinem Home Assistant (siehe Tabelle). Die Namen findest du mit dem **Entitäten-Finder** aus Schritt 1.
+6. Tippe auf **Speichern**.
+
+**Das musst du ersetzen**
+
+| Im Text steht | Setze ein |
+|---|---|
+| `number.DEIN_start_compressor` | dein Startwert (endet auf `start_compressor`) |
+| `sensor.DEIN_degree_minutes` | deine Gradminuten (endet auf `degree_minutes`) |
+| `sensor.DEIN_outdoor_temperature` | deine Außentemperatur |
+| `sensor.DEIN_average_outdoor_temp_bt1` | dein NIBE-Mittel |
+| `sensor.DEIN_current_compressor_frequency_eb101` | deine Verdichterfrequenz jetzt |
+| `sensor.DEIN_requested_compressor_freq_eb101` | deine gewünschte Verdichterfrequenz |
+| `sensor.DEIN_number_of_starts` | deine Anzahl Starts |
+| `sensor.DEIN_defrosting_eb101_ep14` | deine Abtauung |
+| `automation.DEINE_AUTOMATION` | deine Automation aus dem Blueprint |
+
+**Tipp zum Ersetzen:** Kopiere den Text zuerst in einen einfachen Editor (zum Beispiel Notepad) und benutze dort „Suchen und Ersetzen“. Dann geht es schneller und du vergisst nichts.
+
+**Hilfs-Namen:** Die Namen `sensor.nibe_aussentemperatur_6h_mittel`, `input_datetime.nibe_gm_sperrzeit_start`, `counter.nibe_gm_schreibfehler`, `counter.nibe_gm_schreibzugriffe`, `sensor.nibe_verdichterstarts_heute` und `sensor.nibe_verdichterstarts_woche` kommen aus dem Hilfs-Paket und stehen schon richtig im Dashboard. Hast du die Hilfs-Entitäten selbst angelegt (Variante B) und anders benannt, ändere diese Namen auch.
+
+**Wenn etwas nicht klappt**
+
+| Problem | Lösung |
+|---|---|
+| Eine Kachel zeigt „Entität nicht gefunden“ | Der Name ist falsch geschrieben oder die Entität ist noch deaktiviert. Prüfe mit dem Entitäten-Finder. |
+| Die Starts heute/Woche sind leer | Du hast den Sensor „Anzahl Starts“ im Hilfs-Paket nicht eingetragen oder Home Assistant nicht neu gestartet. |
+| Der Schalter macht nichts | Es steht noch `automation.DEINE_AUTOMATION` drin. Setze den Namen deiner Automation ein. |
+
+Mit dem Schalter machst du die Automation aus, ohne sie zu löschen. Wenn sich die Automation nach zwei Fehlern selbst abgeschaltet hat, schaltest du sie hier wieder an.
+
+**Zusätzlich:** Eine einfache Kachel mit Verlauf kannst du auch ohne das ganze Dashboard in ein anderes Dashboard setzen:
 
 ```yaml
 type: vertical-stack
 cards:
   - type: tile
-    entity: number.DEIN_START_COMPRESSOR
-    name: Start Verdichter (eingestellt)
+    entity: automation.DEINE_AUTOMATION
+    name: GM-Automatik (an / aus)
+    features:
+      - type: toggle
   - type: tile
     entity: counter.nibe_gm_schreibzugriffe
     name: Schreibzugriffe
     icon: mdi:memory
   - type: history-graph
-    title: Gradminuten und Startwert (12 h)
+    title: Gradminuten und Startwert (12 Stunden)
     hours_to_show: 12
     entities:
-      - sensor.DEIN_DEGREE_MINUTES
-      - number.DEIN_START_COMPRESSOR
+      - sensor.DEIN_degree_minutes
+      - number.DEIN_start_compressor
 ```

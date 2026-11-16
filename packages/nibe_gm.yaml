@@ -44,3 +44,16 @@ sensor:
       hours: 6
     keep_last_sample: true
     precision: 2
+
+# Verdichterstarts pro Tag und pro Woche (nur für das Dashboard, sonst nicht nötig)
+utility_meter:
+  nibe_verdichterstarts_heute:
+    name: Nibe Verdichterstarts heute
+    # >>> HIER DEN SENSOR "Anzahl Starts" DEINER WÄRMEPUMPE EINTRAGEN <<<
+    source: sensor.DEIN_NIBE_ANZAHL_STARTS
+    cycle: daily
+  nibe_verdichterstarts_woche:
+    name: Nibe Verdichterstarts diese Woche
+    # >>> HIER DENSELBEN SENSOR EINTRAGEN <<<
+    source: sensor.DEIN_NIBE_ANZAHL_STARTS
+    cycle: weekly
