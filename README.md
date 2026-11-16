@@ -2,6 +2,8 @@
 
 [![Blueprint in Home Assistant importieren](https://my.home-assistant.io/badges/blueprint_import.svg)](https://my.home-assistant.io/redirect/blueprint_import/?blueprint_url=https%3A%2F%2Fgithub.com%2Ffubu2k%2Fnibe-vvm320-startwert-automation%2Fblob%2Fmain%2Fblueprints%2Fautomation%2Fnibe_gm%2Fstartwert_verdichter.yaml)
 
+> ⚠️ **Nutzung auf eigene Verantwortung.** Diese Automation schreibt einen Parameter in deine Wärmepumpe. Die Standardwerte stammen von **einer** Anlage (VVM 320 E + F2040) und sind kein allgemeiner Richtwert. Es gibt **keine Gewährleistung und keine Haftung**, siehe Abschnitt 0 und die Datei [LICENSE](LICENSE). Das Projekt steht in keiner Verbindung zu NIBE.
+
 Blueprint: `blueprints/automation/nibe_gm/startwert_verdichter.yaml` · Hilfs-Entitäten als Paket: `packages/nibe_gm.yaml`
 
 ## 0. Bitte zuerst lesen – Nutzung auf eigene Verantwortung
@@ -11,7 +13,8 @@ Diese Automation **schreibt einen Parameter in deine Wärmepumpe** („Start Ver
 - Prüfe vorher, ob die Stufen zu deinem Haus und deiner Anlage passen (Herstellerhinweise, Installateur).
 - **Notiere dir deinen aktuellen Startwert**, damit du ihn jederzeit von Hand zurücksetzen kannst.
 - Beobachte die ersten Tage genau (Meldungen, Dashboard).
-- Für Schäden, Garantiefolgen oder Mehrverbrauch wird keine Haftung übernommen.
+- Für Schäden an der Anlage, Garantiefolgen, Mehrverbrauch, Komfortverlust oder sonstige Folgen wird **keine Haftung** übernommen (siehe [LICENSE](LICENSE)). Du bist selbst dafür verantwortlich, die Werte zu prüfen und die Anlage zu überwachen.
+- Dieses Projekt ist **kein Produkt von NIBE** und nicht mit dem Hersteller abgestimmt.
 - Die Begrenzung der Schreibzugriffe ist eine **Vorsichtsmaßnahme**. Wie oft der Parameterspeicher der Wärmepumpe beschrieben werden darf, ist von NIBE nicht öffentlich dokumentiert.
 
 ## 1. Was die Automation macht
@@ -64,6 +67,19 @@ Die myUplink-Integration legt sehr viele Entitäten an, die meisten sind **stand
 
 So geht es: *Einstellungen → Geräte & Dienste → myUplink → Entitäten*. Filter „deaktivierte Entitäten anzeigen“ einschalten, Entität öffnen, Zahnrad → **Aktiviert** einschalten. Nach dem Aktivieren lädt die Integration neu, das dauert eine Minute. Die genauen Namen unterscheiden sich je nach Gerät und Sprache.
 
+### Entitäten finden und prüfen
+
+Öffne *Entwicklerwerkzeuge → Template* und füge diesen Code ein. Er listet alle benötigten Entitäten auf, die in deiner Installation **aktiv** sind:
+
+```jinja
+{% set suche = 'start_compressor|stop_heating|outdoor_temperature|average_outdoor_temp_bt1|konnektivitat|connectivity|_priority|status_compressor|defrosting_eb101_ep14|supply_line_bt2|calculated_supply_climate_system_1' %}
+{% for e in states | map(attribute='entity_id') | select('search', suche) | sort %}
+{{ e }}
+{% endfor %}
+```
+
+Es sollten etwa **10 Zeilen** erscheinen (je eine pro Zeile der Tabelle oben). Fehlt eine, ist die Entität noch **deaktiviert** und muss wie beschrieben aktiviert werden. Diese Namen trägst du später im Blueprint ein. Erscheinen mehrere ähnliche Namen (z. B. mit und ohne Raumnamen), nimm den, dessen Wert zum Display deiner Wärmepumpe passt.
+
 ## 4. Schritt 2: Hilfs-Entitäten anlegen
 
 Es werden vier Hilfs-Entitäten gebraucht. Ein Blueprint kann sie nicht selbst anlegen.
@@ -100,19 +116,82 @@ Es entstehen: `input_datetime.nibe_gm_sperrzeit_start`, `counter.nibe_gm_schreib
 
 ## 6. Schritt 4: Automation ausfüllen
 
-Der Blueprint hat fünf Bereiche:
+> Ein vollautomatisches Ausfüllen ist nicht möglich, weil Home Assistant jede Installation anders benennt (Gerätename, Raum, Sprache). Mit dem Entitäten-Finder aus Schritt 1 und der Tabelle unten ist es aber in wenigen Minuten erledigt. Die Felder 3 und 4 haben sinnvolle Standardwerte und müssen nur bei Bedarf angefasst werden.
 
-1. **Wärmepumpe:** die aktivierten Entitäten aus Schritt 1 auswählen.
-2. **Hilfs-Entitäten:** die vier Entitäten aus Schritt 2 auswählen.
-3. **Stufen und Schwellen:** Standardwerte nur ändern, wenn du weißt, was du tust. Die Stufen müssen **aufsteigend** sein (z. B. −300, −200, −130), sonst läuft die Automation nie.
-4. **Zeiten und Sicherheit:** Standard 00:00/12:00 mit Wiederholung 01:00/13:00, Sperrzeit 11 h.
-5. **Benachrichtigung:** Aktion „Benachrichtigung senden“ an dein Handy hinzufügen. In der Nachricht stehen die Variablen `nachricht_titel` und `nachricht_text` zur Verfügung, im YAML-Modus z. B.:
-   ```yaml
-   - action: notify.mobile_app_MEIN_HANDY
-     data:
-       title: "{{ nachricht_titel }}"
-       message: "{{ nachricht_text }}"
-   ```
+### Bereich 1: Wärmepumpe (alle Felder Pflicht)
+
+| Feld im Blueprint | Auswählen |
+|---|---|
+| Start Verdichter (Gradminuten-Startwert) | `number.…start_compressor` |
+| Heizungsstopp (Außentemperatur) | `number.…stop_heating` |
+| Außentemperatur (aktuell) | `sensor.…outdoor_temperature` |
+| Außentemperatur Mittel (BT1, NIBE-intern) | `sensor.…average_outdoor_temp_bt1` |
+| Verbindung der Wärmepumpe | `binary_sensor.…konnektivitat` (oder `…connectivity`) |
+| Priorität (Betriebsart) | `sensor.…priority` |
+| Status Verdichter | `sensor.…status_compressor_eb101` |
+| Abtauung (0/1) | `sensor.…defrosting_eb101_ep14` |
+| Vorlauftemperatur (BT2) | `sensor.…supply_line_bt2` |
+| Berechnete Vorlauftemperatur (Heizkreis 1) | `sensor.…calculated_supply_climate_system_1` |
+
+### Bereich 2: Hilfs-Entitäten (alle Felder Pflicht)
+
+Bei Variante A (YAML-Paket) sind die Namen:
+
+| Feld im Blueprint | Auswählen |
+|---|---|
+| Außentemperatur 6-h-Mittel | `sensor.nibe_aussentemperatur_6h_mittel` |
+| Zeitstempel letzte Änderung | `input_datetime.nibe_gm_sperrzeit_start` |
+| Zähler Schreibfehler | `counter.nibe_gm_schreibfehler` |
+| Zähler Schreibzugriffe | `counter.nibe_gm_schreibzugriffe` |
+
+Bei Variante B die Namen, die du selbst vergeben hast.
+
+### Bereiche 3 und 4: Stufen und Zeiten (optional)
+
+Die Standardwerte (−300 / −200 / −130, Schwellen 5 °C und 0 °C, Hysterese 0,75 K, Prüfungen 00:00 und 12:00 mit Wiederholung eine Stunde später, Sperrzeit 11 h) stammen von einer einzelnen Anlage. **Ändere sie nur, wenn du weißt, was du tust.** Die Stufen müssen **aufsteigend** sein, sonst läuft die Automation nie.
+
+### Bereich 5: Benachrichtigung (empfohlen)
+
+Aktion „Benachrichtigung senden“ an dein Handy hinzufügen. In der Nachricht stehen die Variablen `nachricht_titel` und `nachricht_text` zur Verfügung. Im YAML-Modus z. B.:
+
+```yaml
+- action: notify.mobile_app_MEIN_HANDY
+  data:
+    title: "{{ nachricht_titel }}"
+    message: "{{ nachricht_text }}"
+```
+
+Den Namen deines Handys findest du unter *Entwicklerwerkzeuge → Aktionen*, wenn du nach `notify.mobile_app` suchst.
+
+### Alternative: komplette Automation als YAML
+
+*Einstellungen → Automatisierungen → Neue Automatisierung → ⋮ → In YAML bearbeiten*, den Inhalt ersetzen, die Entitäten mit den Ergebnissen des Finders anpassen und speichern:
+
+```yaml
+alias: NIBE Startwert Verdichter nach Außentemperatur
+use_blueprint:
+  path: nibe_gm/startwert_verdichter.yaml
+  input:
+    start_value: number.DEIN_start_compressor
+    heating_stop: number.DEIN_stop_heating
+    outdoor_raw: sensor.DEIN_outdoor_temperature
+    nibe_avg: sensor.DEIN_average_outdoor_temp_bt1
+    connectivity: binary_sensor.DEIN_konnektivitat
+    priority: sensor.DEIN_priority
+    compressor_status: sensor.DEIN_status_compressor_eb101
+    defrost: sensor.DEIN_defrosting_eb101_ep14
+    supply_actual: sensor.DEIN_supply_line_bt2
+    supply_calc: sensor.DEIN_calculated_supply_climate_system_1
+    outdoor_mean: sensor.nibe_aussentemperatur_6h_mittel
+    lock_helper: input_datetime.nibe_gm_sperrzeit_start
+    error_counter: counter.nibe_gm_schreibfehler
+    write_counter: counter.nibe_gm_schreibzugriffe
+    notify_actions:
+      - action: notify.mobile_app_MEIN_HANDY
+        data:
+          title: "{{ nachricht_titel }}"
+          message: "{{ nachricht_text }}"
+```
 
 ## 7. Schritt 5: Testen
 
