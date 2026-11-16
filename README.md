@@ -40,7 +40,7 @@ Schutzmechanismen:
 
 ## 2. Voraussetzungen
 
-- Home Assistant **2024.10 oder neuer**
+- Home Assistant **2026.10 oder neuer**
 - NIBE-Wärmepumpe über die **myUplink-Integration** eingebunden
 - **myUplink Premium** (ohne Premium lassen sich Parameter nicht schreiben)
 - Eine Benachrichtigung aufs Handy (empfohlen, damit du Änderungen und Fehler siehst)
