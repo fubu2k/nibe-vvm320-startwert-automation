@@ -52,8 +52,13 @@ utility_meter:
     # >>> HIER DEN SENSOR "Anzahl Starts" DEINER WÄRMEPUMPE EINTRAGEN <<<
     source: sensor.DEIN_NIBE_ANZAHL_STARTS
     cycle: daily
+    periodically_resetting: true
+    # Zeigt weiter den letzten Wert, wenn myUplink kurz nicht antwortet
+    always_available: true
   nibe_verdichterstarts_woche:
     name: Nibe Verdichterstarts diese Woche
     # >>> HIER DENSELBEN SENSOR EINTRAGEN <<<
     source: sensor.DEIN_NIBE_ANZAHL_STARTS
     cycle: weekly
+    periodically_resetting: true
+    always_available: true
