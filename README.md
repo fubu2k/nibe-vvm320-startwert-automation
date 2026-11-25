@@ -38,8 +38,8 @@ Die Automation stellt diesen Wert **in 3 Stufen** ein. Sie schaut dafür auf die
 | Außentemperatur (6-Stunden-Durchschnitt) | Startwert (Standard) |
 |---|---|
 | über 5 °C | −300 |
-| 0 bis 5 °C | −200 |
-| unter 0 °C | −130 |
+| −3 bis 5 °C | −220 |
+| unter −3 °C | −150 |
 
 **Wann schaut sie nach?** Zweimal am Tag: um 00:00 und um 12:00 Uhr. Ging es zu diesen Zeiten nicht (zum Beispiel wegen Warmwasser), versucht sie es eine Stunde später noch einmal.
 
@@ -188,9 +188,9 @@ Bei Weg B nimmst du die Namen, die du selbst vergeben hast.
 
 ### Bereiche 3 und 4: Stufen und Zeiten (kannst du so lassen)
 
-Standard: Startwerte −300 / −200 / −130, Grenzen bei 5 °C und 0 °C, Puffer 0,75 Grad, Prüfung um 00:00 und 12:00 Uhr mit Wiederholung eine Stunde später, mindestens 11 Stunden zwischen zwei Schreibvorgängen.
+Standard: Startwerte −300 / −220 / −150, Grenzen bei 5 °C und −3 °C, Puffer 0,75 Grad, Prüfung um 00:00 und 12:00 Uhr mit Wiederholung eine Stunde später, mindestens 11 Stunden zwischen zwei Schreibvorgängen.
 
-**Ändere das nur, wenn du genau weißt, was du tust.** Die drei Startwerte müssen von klein nach groß geordnet sein (zum Beispiel −300, −200, −130). Sonst läuft die Automation nie.
+**Ändere das nur, wenn du genau weißt, was du tust.** Die drei Startwerte müssen von klein nach groß geordnet sein (zum Beispiel −300, −220, −150). Sonst läuft die Automation nie.
 
 ### Bereich 5: Benachrichtigung (empfohlen)
 
